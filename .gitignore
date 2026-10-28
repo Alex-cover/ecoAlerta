@@ -1,0 +1,10 @@
+# Sesiones de NiceGUI
+.nicegui/
+
+# Entorno virtual
+venv/
+.venv/
+
+# Python
+__pycache__/
+.pytest_cache/
