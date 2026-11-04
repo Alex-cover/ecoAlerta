@@ -19,6 +19,24 @@ COLOR_ESTADO = {1: "#757575", 2: "#1565C0", 3: "#C62828", 4: "#EF6C00", 5: "#2E7
 COLOR_GRAVEDAD = {"Bajo": "#2e9e5b", "Medio": "#e0a800", "Alto": "#d32f2f"}
 
 
+OSM_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+OSM_ATRIBUTION = (
+    '&copy; <a href="https://www.openstreetmap.org/copyright">'
+    "OpenStreetMap</a> contributors"
+)
+
+def crear_mapa(centro, zoom, clases):
+    """Crea un mapa Leaflet usando explícitamente las teselas de OpenStreetMap."""
+    mapa = ui.leaflet(center=centro, zoom=zoom).classes(clases)
+    if mapa.layers:
+        mapa.remove_layer(mapa.layers[0])
+    mapa.tile_layer(
+        url_template=OSM_URL,
+        options={"attribution": OSM_ATRIBUTION},
+    )
+    return mapa
+
+
 def agregar_marcador(mapa, r, clic=True):
     """Pin con el color y el ícono del tipo; el borde es el color del estado."""
     html = (f'<div style="width:34px;height:34px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);'
@@ -51,13 +69,28 @@ def icono_tipo(r, tamano=40):
 def pedir_ya_no_esta(cliente, r, al_cambiar):
     """Ventana para avisar que el problema ya no está, con una foto opcional."""
     foto = {}
+    enviando = False
+    captura = {}
 
-    def foto_subida(e):
+    async def obtener_captura():
+        return await ui.run_javascript("""
+            new Promise(resolve => navigator.geolocation.getCurrentPosition(
+                p => resolve({latitud: p.coords.latitude, longitud: p.coords.longitude,
+                              precision: p.coords.accuracy}),
+                () => resolve(null), {enableHighAccuracy: true, timeout: 10000}))
+        """, timeout=15)
+
+    async def foto_subida(e):
         try:
             foto["contenido"], cantidad = procesamiento.preparar_foto(e.content.read())
         except Exception:
             ui.notify("El archivo no es una imagen válida", type="negative")
             return
+        ubicacion = await obtener_captura()
+        if ubicacion:
+            captura.update(ubicacion)
+        else:
+            ui.notify("La foto quedará sin verificación de ubicación.", type="warning")
         if cantidad:
             ui.notify(f"Se difuminaron {cantidad} rostro(s) o placa(s)")
         vista.clear()
@@ -65,16 +98,24 @@ def pedir_ya_no_esta(cliente, r, al_cambiar):
             ui.image("data:image/jpeg;base64," + base64.b64encode(foto["contenido"]).decode()).classes("w-40 rounded")
 
     async def enviar():
+        nonlocal enviando
+        if enviando:
+            return
+        enviando = True
+        boton_enviar.disable()
         try:
             id_voto = await consultas.votar(cliente, r["id_reporte"], False)
             if foto:
-                await consultas.subir_foto(cliente, r["id_reporte"], foto["contenido"], id_voto)
+                await consultas.subir_foto(
+                    cliente, r["id_reporte"], foto["contenido"], id_voto,
+                    captura.get("latitud"), captura.get("longitud"), captura.get("precision"))
         except ErrorBD as e:
+            enviando = False
+            boton_enviar.enable()
             ui.notify(str(e), type="warning")
             return
         dialogo.close()
         ui.notify("Gracias por avisar", type="positive")
-        al_cambiar()
 
     with ui.dialog() as dialogo, ui.card().style("width: min(420px, 92vw)"):
         ui.label("¿El problema ya no está?").classes("text-h6")
@@ -82,15 +123,17 @@ def pedir_ya_no_esta(cliente, r, al_cambiar):
                  "Con 3 vecinos que digan que ya no está, el reporte pasa a Solucionado.").classes("text-caption")
         vista = ui.row()
         ui.upload(auto_upload=True, max_files=1, on_upload=foto_subida) \
-            .props('accept=image/* label="Foto (opcional)" flat bordered').classes("w-full")
+            .props('accept="image/*" capture="environment" label="Tomar o subir foto (opcional)" flat bordered') \
+            .classes("w-full")
         with ui.row().classes("w-full justify-end"):
             ui.button("Cancelar", on_click=dialogo.close).props("flat")
-            ui.button("Enviar", icon="close", color="negative", on_click=enviar)
+            boton_enviar = ui.button("Enviar", icon="close", color="negative", on_click=enviar)
     dialogo.open()
 
 
 async def votos(cliente, perfil, r, al_cambiar):
     """Contadores y botones "Sigue ahí" / "Ya no está". al_cambiar() vuelve a dibujar."""
+    votando = False
     with ui.row().classes("items-center gap-4"):
         ui.label("Votos:").classes("text-weight-medium")
         with ui.row().classes("items-center gap-1"):
@@ -105,14 +148,31 @@ async def votos(cliente, perfil, r, al_cambiar):
         return
 
     async def sigue():
+        nonlocal votando
+        if votando:
+            return
+        votando = True
+        boton_sigue.disable()
+        boton_no.disable()
         try:
             await consultas.votar(cliente, r["id_reporte"], True)
             ui.notify("Gracias por confirmar", type="positive")
         except ErrorBD as e:
+            votando = False
+            boton_sigue.enable()
+            boton_no.enable()
             ui.notify(str(e), type="warning")
-        al_cambiar()
+            return
 
     mio = await consultas.mi_voto(cliente, r["id_reporte"])
+
+    async def quitar():
+        try:
+            await consultas.quitar_voto(cliente, r["id_reporte"])
+            ui.notify("Voto eliminado", type="positive")
+        except ErrorBD as e:
+            ui.notify(str(e), type="warning")
+
     with ui.row().classes("w-full no-wrap"):
         boton_sigue = ui.button("Sigue ahí", icon="check_circle", on_click=sigue).classes("grow")
         boton_no = ui.button("Ya no está", icon="cancel", color="negative",
@@ -128,6 +188,8 @@ async def votos(cliente, perfil, r, al_cambiar):
     elif mio is False:
         boton_no.disable()
         ui.label("Usted votó que ya no está.").classes("text-caption")
+    if mio is not None:
+        ui.button("Quitar mi voto", icon="delete", on_click=quitar).props("flat no-caps")
 
 
 async def tarjeta_reporte(cliente, perfil, id_reporte, al_cambiar, compacta=False):
@@ -305,7 +367,7 @@ async def pagina_mapa():
     # Mapa, filtros y leyenda.
     with ui.row().classes("w-full gap-4 items-stretch flex-wrap lg:flex-nowrap"):
         with ui.card().classes("grow q-pa-none overflow-hidden").style("min-width: 300px"):
-            mapa = ui.leaflet(center=CENTRO, zoom=13).classes("w-full h-[78vh]")
+            mapa = crear_mapa(CENTRO, 13, "w-full h-[78vh]")
 
         with ui.card().classes("w-full lg:w-72"):
             ui.label("Filtros").classes("text-subtitle1 text-weight-bold")
@@ -339,6 +401,8 @@ async def pagina_mapa():
         reportes = await consultas.listar_reportes(cliente, {
             "desde": desde.value, "hasta": hasta.value, "id_tipo": tipo.value,
             "id_estado": estado.value, "gravedad": gravedad.value, "id_zona": zona.value})
+        if estado.value is None:
+            reportes = [r for r in reportes if r["id_estado"] != consultas.SOLUCIONADO]
         for capa in marcadores:
             mapa.remove_layer(capa)
         marcadores.clear()

@@ -141,16 +141,17 @@ begin
         update confirmacion set sigue = p_sigue, fecha = now() where id_confirmacion = v_id;
     end if;
 
-    -- 4. Contadores: se suma al voto nuevo y, si cambió, se resta del anterior (en un solo UPDATE)
+    -- 4. Contadores: se calculan desde los votos guardados para no duplicarlos.
+    select count(*) filter (where sigue),
+           count(*) filter (where not sigue)
+      into v_total, v_total_no
+      from confirmacion
+     where id_reporte = p_id_reporte;
+
     update reporte
-       set total_confirmaciones = total_confirmaciones
-                                  + case when p_sigue then 1 else 0 end
-                                  - case when v_sigue is true then 1 else 0 end,
-           total_ya_no_esta     = total_ya_no_esta
-                                  + case when p_sigue then 0 else 1 end
-                                  - case when v_sigue is false then 1 else 0 end
-     where id_reporte = p_id_reporte
-    returning total_confirmaciones, total_ya_no_esta into v_total, v_total_no;
+       set total_confirmaciones = v_total,
+           total_ya_no_esta = v_total_no
+     where id_reporte = p_id_reporte;
 
     -- 5. Cambio automático de estado.
     if v_total_no >= 3 then
@@ -173,6 +174,114 @@ begin
         update reporte set id_estado = v_nuevo where id_reporte = p_id_reporte;
     end if;
     return v_id;
+end;
+$$;
+
+
+-- Registra la evidencia y compara la ubicación de captura con la del mapa.
+create or replace function public.registrar_evidencia(
+    p_id_reporte bigint,
+    p_ruta_archivo text,
+    p_id_confirmacion bigint default null,
+    p_latitud numeric default null,
+    p_longitud numeric default null,
+    p_precision numeric default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+    v_autor uuid;
+    v_distancia numeric;
+    v_verificacion text;
+begin
+    select id_usuario into v_autor from reporte where id_reporte = p_id_reporte;
+    if not found then
+        raise exception 'El reporte no existe' using errcode = 'no_data_found';
+    end if;
+    if v_autor <> auth.uid()
+       and not exists (
+           select 1 from confirmacion
+            where id_confirmacion = p_id_confirmacion
+              and id_reporte = p_id_reporte
+              and id_usuario = auth.uid()
+              and sigue = false
+       ) then
+        raise exception 'No tiene permiso para subir esta evidencia'
+            using errcode = 'insufficient_privilege';
+    end if;
+
+    if p_latitud is null or p_longitud is null then
+        v_verificacion := 'Sin verificación';
+    else
+        select ST_Distance(
+                   ST_SetSRID(ST_MakePoint(p_longitud, p_latitud), 4326)::geography,
+                   ubicacion
+               )
+          into v_distancia
+          from reporte
+         where id_reporte = p_id_reporte;
+        v_verificacion := case when v_distancia <= 100
+                               then 'Ubicación verificada'
+                               else 'Inconsistencia de ubicación' end;
+    end if;
+
+    insert into evidencia (
+        id_reporte, id_confirmacion, ruta_archivo, latitud_captura,
+        longitud_captura, precision_captura, distancia_metros, verificacion_ubicacion
+    ) values (
+        p_id_reporte, p_id_confirmacion, p_ruta_archivo, p_latitud,
+        p_longitud, p_precision, v_distancia, v_verificacion
+    );
+end;
+$$;
+
+
+-- quitar_voto: elimina solo el voto del usuario actual.
+-- No retrocede el estado si el reporte ya avanzó.
+create or replace function public.quitar_voto(p_id_reporte bigint)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    v_estado smallint;
+    v_existe boolean;
+    v_total int;
+    v_total_no int;
+begin
+    select id_estado into v_estado
+      from reporte
+     where id_reporte = p_id_reporte
+       for update;
+    if not found then
+        raise exception 'El reporte no existe' using errcode = 'no_data_found';
+    end if;
+    if v_estado = 5 then
+        raise exception 'El reporte ya está solucionado' using errcode = 'check_violation';
+    end if;
+
+    delete from confirmacion
+     where id_reporte = p_id_reporte
+       and id_usuario = auth.uid();
+    v_existe := found;
+    if not v_existe then
+        raise exception 'Usted no tiene un voto en este reporte' using errcode = 'check_violation';
+    end if;
+
+    select count(*) filter (where sigue),
+           count(*) filter (where not sigue)
+      into v_total, v_total_no
+      from confirmacion
+     where id_reporte = p_id_reporte;
+
+    update reporte
+       set total_confirmaciones = v_total,
+           total_ya_no_esta = v_total_no
+     where id_reporte = p_id_reporte;
 end;
 $$;
 
@@ -305,10 +414,12 @@ $$;
 
 -- Solo usuarios con sesión pueden llamarlas.
 revoke execute on function public.es_moderador(), public.cambiar_estado(bigint, smallint, text),
-    public.votar(bigint, boolean), public.cambiar_rol(uuid, text),
+    public.votar(bigint, boolean), public.registrar_evidencia(bigint, text, bigint, numeric, numeric, numeric),
+    public.quitar_voto(bigint), public.cambiar_rol(uuid, text),
     public.editar_reporte(bigint, smallint, text, text, text, text, text, smallint[]),
     public.eliminar_usuario(uuid) from public, anon;
 grant execute on function public.es_moderador(), public.cambiar_estado(bigint, smallint, text),
-    public.votar(bigint, boolean), public.cambiar_rol(uuid, text),
+    public.votar(bigint, boolean), public.registrar_evidencia(bigint, text, bigint, numeric, numeric, numeric),
+    public.quitar_voto(bigint), public.cambiar_rol(uuid, text),
     public.editar_reporte(bigint, smallint, text, text, text, text, text, smallint[]),
     public.eliminar_usuario(uuid) to authenticated;

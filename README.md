@@ -1,8 +1,13 @@
-# EcoAlerta El Alto
+# Voz Ambiental
 
 Sistema para reportar y dar seguimiento a focos de contaminación en El Alto, con mapa
 (OpenStreetMap), confirmaciones de los vecinos y actualización en tiempo real.
 Proyecto final de Base de Datos II (Supabase + PostGIS + Python/NiceGUI).
+
+Las evidencias pueden tomarse directamente desde el celular. La aplicación solicita la
+ubicación del navegador al capturar o subir la foto y la compara con el punto del mapa
+(rango de 100 metros). El reporte no se bloquea: la evidencia queda como **Ubicación
+verificada**, **Inconsistencia de ubicación** o **Sin verificación** para revisión del moderador.
 
 ## Si te pasaron el proyecto en un zip
 
@@ -43,32 +48,6 @@ python main.py
 ```
 
 Abrir http://localhost:8080
-
-## Publicar en internet con Render
-
-La aplicación puede publicarse en un servicio web como Render. Supabase sigue siendo el
-servicio de base de datos, autenticación, archivos y tiempo real.
-
-1. Sube el proyecto a un repositorio privado de GitHub. No subas `config.py`, la clave
-   `service_role`, contraseñas ni archivos `.env`.
-2. En Render crea un **New → Web Service** y conecta el repositorio.
-3. Usa esta configuración:
-   - **Runtime:** Python 3
-   - **Build command:** `pip install -r requirements.txt`
-   - **Start command:** `python main.py`
-4. En **Environment Variables** agrega:
-   - `SUPABASE_URL`: la URL de Supabase.
-   - `SUPABASE_KEY`: la clave pública `anon` de Supabase, nunca `service_role`.
-   - `CLAVE_SESION`: una cadena larga y aleatoria, diferente de la usada localmente.
-5. En Supabase, en **Authentication → URL Configuration**, coloca la URL pública de
-   Render como **Site URL**. Si usas confirmación de correo, agrega también esa URL en
-   **Redirect URLs**.
-6. Espera el despliegue y abre la URL que entrega Render. Tus compañeros podrán registrarse
-   y subir reportes desde esa dirección.
-
-El programa escucha en `0.0.0.0` y usa automáticamente el puerto `PORT` que entrega el
-hosting. No ejecutes `sql/02_tablas.sql` sobre una base que ya contiene datos, porque
-ese archivo recrea las tablas.
 
 La base empieza **vacía**, solo con el administrador:
 - `admin@ecoalerta.test`, contraseña `Prueba123!` (moderador). **Cambiar la contraseña** en

@@ -22,7 +22,7 @@ def tabla(titulo, filas, columnas):
 # Gráficos (ECharts, viene con NiceGUI)
 
 # Colores de los gráficos: azul y naranja se distinguen bien también para daltónicos.
-AZUL, NARANJA = "#2a78d6", "#eb6834"
+AZUL, NARANJA = "#4772df", "#49ad9f"
 TEXTO_SUAVE, GRILLA = "#52514e", "#e6e5e1"
 
 

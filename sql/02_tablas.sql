@@ -124,13 +124,20 @@ create table public.evidencia (
     id_reporte      bigint      not null,
     id_confirmacion bigint,                  -- null = foto del reporte.
     ruta_archivo    text        not null,
+    latitud_captura numeric(9,6),
+    longitud_captura numeric(9,6),
+    precision_captura numeric(8,2),
+    distancia_metros numeric(10,2),
+    verificacion_ubicacion text not null default 'Sin verificación',
     fecha_subida    timestamptz not null default now(),
     constraint pk_evidencia primary key (id_evidencia),
     constraint fk_evidencia_reporte foreign key (id_reporte)
         references public.reporte (id_reporte) on delete cascade,
     constraint fk_evidencia_confirmacion foreign key (id_confirmacion)
         references public.confirmacion (id_confirmacion) on delete cascade,
-    constraint uq_evidencia_ruta_archivo unique (ruta_archivo)
+    constraint uq_evidencia_ruta_archivo unique (ruta_archivo),
+    constraint ck_evidencia_verificacion check
+        (verificacion_ubicacion in ('Ubicación verificada', 'Inconsistencia de ubicación', 'Sin verificación'))
 );
 
 -- Historial de estados. Solo lo llenan los triggers.

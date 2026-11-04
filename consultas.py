@@ -151,6 +151,11 @@ async def votar(cliente, id_reporte, sigue):
     return await ejecutar(cliente.rpc("votar", {"p_id_reporte": id_reporte, "p_sigue": sigue}))
 
 
+async def quitar_voto(cliente, id_reporte):
+    """Elimina el voto del usuario actual y actualiza los contadores."""
+    await ejecutar(cliente.rpc("quitar_voto", {"p_id_reporte": id_reporte}))
+
+
 async def mi_voto(cliente, id_reporte):
     """True, False o None si todavía no votó."""
     filas = await ejecutar(cliente.table("confirmacion").select("sigue")
@@ -217,16 +222,23 @@ async def eliminar_usuario(cliente, id_usuario):
 
 # Fotos.
 
-async def subir_foto(cliente, id_reporte, contenido, id_confirmacion=None):
-    """Sube una foto JPG (ya difuminada) al bucket y la registra en la tabla evidencia."""
+async def subir_foto(cliente, id_reporte, contenido, id_confirmacion=None,
+                     latitud=None, longitud=None, precision=None):
+    """Sube la foto y registra la ubicación capturada por el navegador."""
     # Con id_confirmacion es la foto de que el problema ya no está.
     ruta = f"{await mi_id(cliente)}/{id_reporte}/{uuid.uuid4().hex}.jpg"
     try:
         await cliente.storage.from_("evidencias").upload(ruta, contenido, {"content-type": "image/jpeg"})
     except Exception as e:
         raise mensaje_error(e) from e
-    await ejecutar(cliente.table("evidencia").insert(
-        {"id_reporte": id_reporte, "ruta_archivo": ruta, "id_confirmacion": id_confirmacion}))
+    try:
+        await ejecutar(cliente.rpc("registrar_evidencia", {
+            "p_id_reporte": id_reporte, "p_ruta_archivo": ruta,
+            "p_id_confirmacion": id_confirmacion, "p_latitud": latitud,
+            "p_longitud": longitud, "p_precision": precision}))
+    except ErrorBD:
+        await cliente.storage.from_("evidencias").remove([ruta])
+        raise
 
 
 async def urls_fotos(cliente, id_reporte, ya_no_esta=False):
@@ -242,6 +254,26 @@ async def urls_fotos(cliente, id_reporte, ya_no_esta=False):
         return []
     urls = await cliente.storage.from_("evidencias").create_signed_urls([f["ruta_archivo"] for f in fotos], 3600)
     return [u["signedURL"] for u in urls]
+
+
+async def evidencias(cliente, id_reporte, ya_no_esta=False):
+    """Evidencias con estado de verificación y URL temporal."""
+    consulta = cliente.table("evidencia").select(
+        "ruta_archivo, latitud_captura, longitud_captura, precision_captura, "
+        "distancia_metros, verificacion_ubicacion, fecha_captura, fecha_subida"
+    ).eq("id_reporte", id_reporte)
+    if ya_no_esta:
+        consulta = consulta.not_.is_("id_confirmacion", "null")
+    else:
+        consulta = consulta.is_("id_confirmacion", "null")
+    filas = await ejecutar(consulta.order("fecha_subida"))
+    if not filas:
+        return []
+    urls = await cliente.storage.from_("evidencias").create_signed_urls(
+        [f["ruta_archivo"] for f in filas], 3600)
+    for fila, url in zip(filas, urls):
+        fila["url"] = url["signedURL"]
+    return filas
 
 
 # Consultas de análisis (vistas)

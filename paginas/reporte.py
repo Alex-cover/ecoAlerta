@@ -9,8 +9,8 @@ import consultas
 import procesamiento
 from conexion import ErrorBD
 from paginas.login import encabezado, revisar_sesion
-from paginas.mapa import (CENTRO, COLOR_GRAVEDAD, agregar_marcador, avisar_cambios, preparar_filas,
-                          tabla_reportes, tarjeta_reporte)
+from paginas.mapa import (CENTRO, COLOR_GRAVEDAD, agregar_marcador, avisar_cambios, crear_mapa,
+                          preparar_filas, tabla_reportes, tarjeta_reporte)
 
 CRITERIOS = {"Bajo": "Área pequeña, sin riesgo inmediato para la salud.",
              "Medio": "Área mediana o molestia continua; afecta el paso o la convivencia.",
@@ -29,7 +29,7 @@ async def pagina_nuevo():
     tipos = await consultas.tipos(cliente)
     elegido = {"id_tipo": None, "gravedad": None}   # lo que el usuario va eligiendo.
     punto = {}   # latitud y longitud elegidas.
-    fotos = []   # fotos ya difuminadas.
+    fotos = []   # fotos ya difuminadas y ubicación de captura.
 
     with ui.card().classes("w-full q-pa-lg").style("max-width: 760px; margin: 0 auto"):
         ui.label("Nuevo reporte ambiental").classes("text-h5 text-weight-bold")
@@ -131,7 +131,7 @@ async def pagina_nuevo():
             ui.space()
             ui.button("Usar mi ubicación", icon="my_location", on_click=lambda: mi_ubicacion()).props("flat no-caps")
         ui.label("Haga clic en el mapa donde está el problema.").classes("text-caption text-grey-7")
-        mapa = ui.leaflet(center=CENTRO, zoom=13).classes("w-full h-72 rounded-borders")
+        mapa = crear_mapa(CENTRO, 13, "w-full h-72 rounded-borders")
         texto_punto = ui.label("Ubicación: sin elegir").classes("text-caption")
 
         # Fotos.
@@ -140,7 +140,8 @@ async def pagina_nuevo():
         with ui.row().classes("w-full items-start gap-2"):
             vista = ui.row().classes("gap-2")
             subida = ui.upload(multiple=True, auto_upload=True) \
-                .props('accept=image/* label="Subir imagen" flat bordered color=grey-7').classes("w-56")
+                    .props('accept="image/*" capture="environment" label="Tomar o subir foto" flat bordered color=grey-7') \
+                    .classes("w-56")
 
         boton = ui.button("Registrar reporte", icon="send").classes("w-full q-mt-md").props("size=lg")
 
@@ -167,14 +168,22 @@ async def pagina_nuevo():
         mapa.set_center((punto["latitud"], punto["longitud"]))
         mapa.set_zoom(17)
 
-    def foto_subida(e):
+    async def foto_subida(e):
         # Difuminamos la foto antes de subirla y mostramos cómo quedó.
         try:
             contenido, cantidad = procesamiento.preparar_foto(e.content.read())
         except Exception:
             ui.notify("El archivo no es una imagen válida", type="negative")
             return
-        fotos.append(contenido)
+        captura = await ui.run_javascript("""
+            new Promise(resolve => navigator.geolocation.getCurrentPosition(
+                p => resolve({latitud: p.coords.latitude, longitud: p.coords.longitude,
+                              precision: p.coords.accuracy}),
+                () => resolve(null), {enableHighAccuracy: true, timeout: 10000}))
+        """, timeout=15)
+        fotos.append({"contenido": contenido, "captura": captura})
+        if not captura:
+            ui.notify("No se obtuvo la ubicación de la captura; quedará sin verificación.", type="warning")
         if cantidad:
             ui.notify(f"Se difuminaron {cantidad} rostro(s) o placa(s)")
         with vista:
@@ -188,8 +197,12 @@ async def pagina_nuevo():
                 "id_tipo": elegido["id_tipo"], "gravedad": elegido["gravedad"], "descripcion": descripcion.value,
                 "latitud": punto.get("latitud"), "longitud": punto.get("longitud"),
                 "tamano": tamano.value, "frecuencia": frecuencia.value, "horario": horario.value}, sorted(marcadas))
-            for contenido in fotos:
-                await consultas.subir_foto(cliente, nuevo["id_reporte"], contenido)
+            for foto in fotos:
+                captura = foto["captura"] or {}
+                await consultas.subir_foto(
+                    cliente, nuevo["id_reporte"], foto["contenido"],
+                    latitud=captura.get("latitud"), longitud=captura.get("longitud"),
+                    precision=captura.get("precision"))
         except ErrorBD as e:
             ui.notify(str(e), type="negative")
             return
@@ -331,13 +344,22 @@ async def pagina_detalle(id_reporte: int):
     # Fotos: las del reporte y las de vecinos que avisaron que ya no está.
     @ui.refreshable
     async def fotos():
-        for titulo, urls in [("Evidencia del reporte", await consultas.urls_fotos(cliente, id_reporte)),
-                             ("Fotos de que ya no está", await consultas.urls_fotos(cliente, id_reporte, True))]:
-            if urls:
+        for titulo, lista in [("Evidencia del reporte", await consultas.evidencias(cliente, id_reporte)),
+                              ("Fotos de que ya no está", await consultas.evidencias(cliente, id_reporte, True))]:
+            if lista:
                 with ui.card().classes("w-full"):
                     ui.label(titulo).classes("text-subtitle1 text-weight-bold")
-                    for url in urls:
-                        ui.image(url).classes("w-full rounded-borders")
+                    for evidencia in lista:
+                        ui.image(evidencia["url"]).classes("w-full rounded-borders")
+                        if perfil["rol"] == "moderador":
+                            estado = evidencia["verificacion_ubicacion"]
+                            texto = estado
+                            if evidencia["distancia_metros"] is not None:
+                                texto += f" · {float(evidencia['distancia_metros']):.1f} m del punto"
+                            ui.label(texto).classes(
+                                "text-negative" if estado == "Inconsistencia de ubicación"
+                                else "text-positive" if estado == "Ubicación verificada"
+                                else "text-grey-7")
 
     def refrescar():
         detalle.refresh()
@@ -348,7 +370,7 @@ async def pagina_detalle(id_reporte: int):
             r = await detalle()
         with ui.column().classes("w-full lg:w-96"):
             with ui.card().classes("w-full q-pa-none overflow-hidden"):
-                mapa = ui.leaflet(center=(r["latitud"], r["longitud"]), zoom=16).classes("w-full h-64")
+                mapa = crear_mapa((r["latitud"], r["longitud"]), 16, "w-full h-64")
             await fotos()
 
     await mapa.initialized(timeout=15)
