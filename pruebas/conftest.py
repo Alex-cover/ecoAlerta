@@ -42,7 +42,7 @@ async def vecino1():
 @pytest_asyncio.fixture
 async def moderador():
     cliente = await entrar("moderador")
-    # La primera vez se registra como estudiante: el admin lo vuelve moderador.
+    # La primera vez se registra como ciudadano: el admin lo vuelve moderador.
     perfil = await conexion.ejecutar(cliente.table("usuario").select("id_usuario, rol")
                                      .eq("id_usuario", await consultas.mi_id(cliente)).single())
     if perfil["rol"] != "moderador":

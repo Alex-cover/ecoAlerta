@@ -71,14 +71,34 @@ async def pagina_panel():
     if not cliente:
         return
     encabezado(perfil, "Estadísticas", "/panel")
+    filtros = {}
+    with ui.card().classes("w-full"):
+        ui.label("Filtrar estadísticas por fecha de creación").classes("text-subtitle1 text-weight-medium")
+        with ui.row().classes("items-end gap-3"):
+            desde = ui.input("Desde").props("type=date outlined dense")
+            hasta = ui.input("Hasta").props("type=date outlined dense")
+            def aplicar_filtro():
+                filtros.clear()
+                if desde.value:
+                    filtros["desde"] = desde.value
+                if hasta.value:
+                    filtros["hasta"] = hasta.value
+                contenido.refresh()
+            def quitar_filtro():
+                desde.value = None
+                hasta.value = None
+                filtros.clear()
+                contenido.refresh()
+            ui.button("Aplicar", icon="filter_alt", on_click=aplicar_filtro)
+            ui.button("Limpiar", icon="clear", on_click=quitar_filtro).props("flat")
 
     # Se vuelve a dibujar cuando cambia un reporte (tiempo real)
     @ui.refreshable
     async def contenido():
-        tipos = await consultas.resumen_tipo(cliente)
-        zonas = await consultas.resumen_zona(cliente)
+        tipos = await consultas.resumen_tipo(cliente, filtros)
+        zonas = await consultas.resumen_zona(cliente, filtros)
         focos = await consultas.focos_recurrentes(cliente)
-        caracteristicas = await consultas.resumen_caracteristica(cliente)
+        caracteristicas = await consultas.resumen_caracteristica(cliente, filtros)
         for c in caracteristicas:
             c["tipo"] = c["tipo"] or "Todos"
 
@@ -97,7 +117,7 @@ async def pagina_panel():
                             ui.label(str(valor)).classes("text-h5 text-weight-bold")
 
         # Reportes nuevos por semana (línea)
-        semanas, totales = ultimas_semanas(await consultas.reportes_por_semana(cliente))
+        semanas, totales = ultimas_semanas(await consultas.reportes_por_semana(cliente, filtros))
         with ui.row().classes("w-full gap-4"):
             grafico("Reportes nuevos por semana (últimas 12)", {
                 "grid": {"left": 8, "right": 24, "top": 16, "bottom": 8, "containLabel": True},
@@ -142,7 +162,7 @@ async def pagina_panel():
                            [c["total"] for c in primeras], "Reportes"), alto=max(280, 30 * len(primeras)))
 
         # Focos recurrentes: es una lista de lugares, mejor en tabla.
-        tabla("Focos recurrentes (3 o más reportes del mismo tipo a menos de 100 m)", focos,
+        tabla("Focos recurrentes (histórico; no depende del filtro de fechas)", focos,
               [("tipo", "Tipo"), ("zona", "Distrito"), ("total_reportes", "Reportes"), ("codigos", "Códigos")])
 
         # Los mismos datos de los gráficos, en tablas (para leer los números exactos)
@@ -198,7 +218,7 @@ async def pagina_usuarios():
                 <q-btn v-if="!props.row.es_yo" flat dense no-caps color="primary"
                        :label="props.row.rol == 'moderador' ? 'Quitar moderador' : 'Hacer moderador'"
                        @click="$parent.$emit('cambiar', props.row)"/>
-                <q-btn v-if="!props.row.es_yo && props.row.rol == 'estudiante'" flat dense no-caps
+                <q-btn v-if="!props.row.es_yo && props.row.rol == 'ciudadano'" flat dense no-caps
                        color="negative" label="Eliminar"
                        @click="$parent.$emit('eliminar', props.row)"/>
                 <span v-if="props.row.es_yo" class="text-grey-6">(usted)</span></q-td>""")
@@ -206,7 +226,7 @@ async def pagina_usuarios():
             tabla.on("eliminar", eliminar)
 
     async def cambiar(e):
-        nuevo = "estudiante" if e.args["rol"] == "moderador" else "moderador"
+        nuevo = "ciudadano" if e.args["rol"] == "moderador" else "moderador"
         try:
             # La función de la BD vuelve a revisar que quien lo pide sea moderador.
             await consultas.cambiar_rol(cliente, e.args["id_usuario"], nuevo)

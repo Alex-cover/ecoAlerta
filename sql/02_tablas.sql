@@ -53,14 +53,14 @@ create table public.usuario (
     id_usuario      uuid        not null,
     nombre_usuario  text        not null,
     nombre_completo text        not null,
-    rol             text        not null default 'estudiante',
+    rol             text        not null default 'ciudadano',
     fecha_registro  timestamptz not null default now(),
     constraint pk_usuario primary key (id_usuario),
     constraint fk_usuario_auth_users foreign key (id_usuario)
         references auth.users (id) on delete cascade,
     constraint uq_usuario_nombre_usuario unique (nombre_usuario),
     constraint ck_usuario_nombre_usuario check (char_length(nombre_usuario) between 3 and 30),
-    constraint ck_usuario_rol check (rol in ('estudiante', 'moderador'))
+    constraint ck_usuario_rol check (rol in ('ciudadano', 'moderador'))
 );
 
 

@@ -287,7 +287,7 @@ $$;
 
 
 -- Detalle de esta secci?n.
--- cambiar_rol: solo el moderador; pasa a un usuario a 'estudiante' o 'moderador'.
+-- cambiar_rol: solo el moderador; pasa a un usuario a 'ciudadano' o 'moderador'.
 -- Nadie cambia su propio rol (así siempre queda al menos el que lo hace).
 -- Detalle de esta secci?n.
 create or replace function public.cambiar_rol(p_id_usuario uuid, p_rol text)
@@ -337,7 +337,7 @@ begin
     if not found then
         raise exception 'El usuario no existe' using errcode = 'no_data_found';
     end if;
-    if v_rol <> 'estudiante' then
+    if v_rol <> 'ciudadano' then
         raise exception 'Solo se pueden eliminar cuentas de vecinos' using errcode = 'check_violation';
     end if;
 

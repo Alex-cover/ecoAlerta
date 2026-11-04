@@ -197,7 +197,7 @@ async def usuarios(cliente):
 
 
 async def cambiar_rol(cliente, id_usuario, rol):
-    """Solo moderador. rol = 'estudiante' o 'moderador'."""
+    """Solo moderador. rol = 'ciudadano' o 'moderador'."""
     await ejecutar(cliente.rpc("cambiar_rol", {"p_id_usuario": id_usuario, "p_rol": rol}))
 
 
@@ -278,32 +278,64 @@ async def evidencias(cliente, id_reporte, ya_no_esta=False):
 
 # Consultas de análisis (vistas)
 
-async def resumen_tipo(cliente):
-    return await ejecutar(cliente.table("v_resumen_tipo").select("*").order("total", desc=True))
+async def resumen_tipo(cliente, filtros=None):
+    if not filtros:
+        return await ejecutar(cliente.table("v_resumen_tipo").select("*").order("total", desc=True))
+    filas = await listar_reportes(cliente, filtros)
+    catalogo = await tipos(cliente)
+    resumen = {t["id_tipo"]: {"tipo": t["nombre"], "total": 0, "gravedad_alta": 0, "solucionados": 0}
+               for t in catalogo}
+    for r in filas:
+        fila = resumen[r["id_tipo"]]
+        fila["total"] += 1
+        fila["gravedad_alta"] += r["gravedad"] == "Alto"
+        fila["solucionados"] += r["id_estado"] == SOLUCIONADO
+    return sorted(resumen.values(), key=lambda x: x["total"], reverse=True)
 
 
-async def resumen_zona(cliente):
-    return await ejecutar(cliente.table("v_resumen_zona").select("*").order("total", desc=True))
+async def resumen_zona(cliente, filtros=None):
+    if not filtros:
+        return await ejecutar(cliente.table("v_resumen_zona").select("*").order("total", desc=True))
+    filas = await listar_reportes(cliente, filtros)
+    catalogo = await ejecutar(cliente.table("zona").select("id_zona, nombre").order("id_zona"))
+    resumen = {
+        z["id_zona"]: {"zona": z["nombre"], "total": 0, "reportados": 0, "confirmados": 0,
+                       "prioritarios": 0, "en_atencion": 0, "solucionados": 0}
+        for z in catalogo
+    }
+    nombres_estado = {REPORTADO: "reportados", CONFIRMADO: "confirmados",
+                      PRIORITARIO: "prioritarios", EN_ATENCION: "en_atencion",
+                      SOLUCIONADO: "solucionados"}
+    for r in filas:
+        fila = resumen[r["id_zona"]]
+        fila["total"] += 1
+        fila[nombres_estado[r["id_estado"]]] += 1
+    return sorted(resumen.values(), key=lambda x: x["total"], reverse=True)
 
 
 async def focos_recurrentes(cliente):
     return await ejecutar(cliente.table("v_focos_recurrentes").select("*").order("total_reportes", desc=True))
 
 
-async def reportes_por_semana(cliente):
+async def reportes_por_semana(cliente, filtros=None):
     """Reportes nuevos por semana (lunes, hora de Bolivia): [{"semana": "2026-10-19", "total": 4}, ...]"""
     conteo = {}
-    for r in await listar_reportes(cliente):
+    for r in await listar_reportes(cliente, filtros or {}):
         dia = datetime.fromisoformat(r["fecha_creacion"]).astimezone(HORA_BOLIVIA).date()
         lunes = (dia - timedelta(days=dia.weekday())).isoformat()
         conteo[lunes] = conteo.get(lunes, 0) + 1
     return [{"semana": s, "total": n} for s, n in sorted(conteo.items())]
 
 
-async def resumen_caracteristica(cliente):
+async def resumen_caracteristica(cliente, filtros=None):
     """Cuántos reportes tienen cada característica (solo las que aparecen en algún reporte)."""
     filas = await ejecutar(cliente.table("reporte_caracteristica").select(
-        "id_caracteristica, caracteristica(grupo, nombre, tipo_contaminacion(nombre)), reporte(gravedad, id_estado)"))
+        "id_reporte, id_caracteristica, caracteristica(grupo, nombre, tipo_contaminacion(nombre)), "
+        "reporte(gravedad, id_estado, fecha_creacion)"))
+    if filtros:
+        reportes = await listar_reportes(cliente, filtros)
+        incluidos = {r["id_reporte"] for r in reportes}
+        filas = [f for f in filas if f["id_reporte"] in incluidos]
     resumen = {}
     for f in filas:
         c = f["caracteristica"]

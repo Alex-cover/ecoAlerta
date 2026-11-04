@@ -26,6 +26,10 @@ La base de datos ya está lista en Supabase y `config.py` ya trae las claves. So
 
 ⚠️ **No ejecutar los archivos de `sql/`**: `02_tablas.sql` borra todos los datos de la app.
 
+Si la base ya existía antes del cambio de `estudiante` a `ciudadano`, ejecutar una vez
+`sql/10_migrar_roles_ciudadanos.sql` en el SQL Editor de Supabase. Esta consulta conserva
+las cuentas y solo cambia el nombre del rol.
+
 ## Instalación (desde cero, con una base de Supabase nueva)
 
 1. **Base de datos**: en el SQL Editor de Supabase ejecutar en orden los archivos de `sql/`

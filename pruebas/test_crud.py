@@ -115,7 +115,7 @@ async def test_foto_de_ya_no_esta(vecino1):
 
 async def test_cambio_de_estado(vecino1, moderador):
     nuevo = await crear_reporte(vecino1)
-    # Un estudiante no puede cambiar el estado.
+    # Un ciudadano no puede cambiar el estado.
     with pytest.raises(ErrorBD, match="moderador"):
         await consultas.cambiar_estado(vecino1, nuevo["id_reporte"], consultas.EN_ATENCION)
     # El moderador sí, y queda en el historial con su nombre.
@@ -148,16 +148,16 @@ async def test_mis_reportes(vecino1):
 async def test_cambiar_rol(vecino1, moderador):
     await entrar("vecino6")  # por si la cuenta todavía no existe.
     vecino6 = next(u for u in await consultas.usuarios(moderador) if u["nombre_usuario"] == "vecino6_prueba")
-    # Un estudiante no puede cambiar roles.
+    # Un ciudadano no puede cambiar roles.
     with pytest.raises(ErrorBD, match="moderador"):
         await consultas.cambiar_rol(vecino1, vecino6["id_usuario"], "moderador")
     # El moderador sí (y lo dejamos como estaba)
     await consultas.cambiar_rol(moderador, vecino6["id_usuario"], "moderador")
-    await consultas.cambiar_rol(moderador, vecino6["id_usuario"], "estudiante")
+    await consultas.cambiar_rol(moderador, vecino6["id_usuario"], "ciudadano")
     # Nadie cambia su propio rol.
     yo = next(u for u in await consultas.usuarios(moderador) if u["nombre_usuario"] == "moderador_prueba")
     with pytest.raises(ErrorBD, match="propio rol"):
-        await consultas.cambiar_rol(moderador, yo["id_usuario"], "estudiante")
+        await consultas.cambiar_rol(moderador, yo["id_usuario"], "ciudadano")
 
 
 async def test_caracteristicas(vecino1):
