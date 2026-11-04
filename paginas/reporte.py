@@ -139,7 +139,7 @@ async def pagina_nuevo():
         ui.label("Antes de subirlas se difuminan rostros y placas.").classes("text-caption text-grey-7")
         with ui.row().classes("w-full items-start gap-2"):
             vista = ui.row().classes("gap-2")
-            subida = ui.upload(multiple=True, auto_upload=True) \
+            subida = ui.upload(multiple=True, auto_upload=True, on_upload=lambda e: foto_subida(e)) \
                     .props('accept="image/*" capture="environment" label="Tomar o subir foto" flat bordered color=grey-7') \
                     .classes("w-56")
 
@@ -175,20 +175,22 @@ async def pagina_nuevo():
         except Exception:
             ui.notify("El archivo no es una imagen válida", type="negative")
             return
+        fotos.append({"contenido": contenido, "captura": None})
+        with vista:
+            ui.image("data:image/jpeg;base64," + base64.b64encode(contenido).decode()) \
+                .classes("w-32 h-32 rounded-borders").props("fit=cover")
+
         captura = await ui.run_javascript("""
             new Promise(resolve => navigator.geolocation.getCurrentPosition(
                 p => resolve({latitud: p.coords.latitude, longitud: p.coords.longitude,
                               precision: p.coords.accuracy}),
                 () => resolve(null), {enableHighAccuracy: true, timeout: 10000}))
         """, timeout=15)
-        fotos.append({"contenido": contenido, "captura": captura})
+        fotos[-1]["captura"] = captura
         if not captura:
             ui.notify("No se obtuvo la ubicación de la captura; quedará sin verificación.", type="warning")
         if cantidad:
             ui.notify(f"Se difuminaron {cantidad} rostro(s) o placa(s)")
-        with vista:
-            ui.image("data:image/jpeg;base64," + base64.b64encode(contenido).decode()) \
-                .classes("w-32 h-32 rounded-borders").props("fit=cover")
 
     async def guardar():
         try:
@@ -206,11 +208,13 @@ async def pagina_nuevo():
         except ErrorBD as e:
             ui.notify(str(e), type="negative")
             return
+        except Exception as e:
+            ui.notify(f"No se pudo guardar la evidencia: {e}", type="negative")
+            return
         ui.notify(f"Reporte {nuevo['codigo']} guardado", type="positive")
         ui.navigate.to(f"/reporte/{nuevo['id_reporte']}")
 
     mapa.on("map-click", clic_mapa)
-    subida.on_upload(foto_subida)
     boton.on_click(guardar)
 
 

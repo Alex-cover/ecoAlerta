@@ -260,7 +260,7 @@ async def evidencias(cliente, id_reporte, ya_no_esta=False):
     """Evidencias con estado de verificación y URL temporal."""
     consulta = cliente.table("evidencia").select(
         "ruta_archivo, latitud_captura, longitud_captura, precision_captura, "
-        "distancia_metros, verificacion_ubicacion, fecha_captura, fecha_subida"
+        "distancia_metros, verificacion_ubicacion, fecha_subida"
     ).eq("id_reporte", id_reporte)
     if ya_no_esta:
         consulta = consulta.not_.is_("id_confirmacion", "null")
