@@ -162,7 +162,7 @@ async def pagina_panel():
                            [c["total"] for c in primeras], "Reportes"), alto=max(280, 30 * len(primeras)))
 
         # Focos recurrentes: es una lista de lugares, mejor en tabla.
-        tabla("Focos recurrentes (histórico; no depende del filtro de fechas)", focos,
+        tabla("Focos recurrentes", focos,
               [("tipo", "Tipo"), ("zona", "Distrito"), ("total_reportes", "Reportes"), ("codigos", "Códigos")])
 
         # Los mismos datos de los gráficos, en tablas (para leer los números exactos)
