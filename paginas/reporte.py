@@ -139,9 +139,14 @@ async def pagina_nuevo():
         ui.label("Antes de subirlas se difuminan rostros y placas.").classes("text-caption text-grey-7")
         with ui.row().classes("w-full items-start gap-2"):
             vista = ui.row().classes("gap-2")
-            subida = ui.upload(multiple=True, auto_upload=True, on_upload=foto_subida) \
+            with ui.column().classes("gap-2"):
+                subida_galeria = ui.upload(multiple=True, auto_upload=True) \
+                    .props('accept="image/*" max-file-size=10485760 '
+                           'label="Subir desde galería" flat bordered color=grey-7') \
+                    .classes("w-56")
+                subida_camara = ui.upload(multiple=False, auto_upload=True) \
                     .props('accept="image/*" capture="environment" max-file-size=10485760 '
-                           'label="Tomar o subir foto" flat bordered color=grey-7') \
+                           'label="Tomar foto" flat bordered color=primary') \
                     .classes("w-56")
 
         boton = ui.button("Registrar reporte", icon="send").classes("w-full q-mt-md").props("size=lg")
@@ -220,6 +225,8 @@ async def pagina_nuevo():
         ui.navigate.to(f"/reporte/{nuevo['id_reporte']}")
 
     mapa.on("map-click", clic_mapa)
+    subida_galeria.on_upload(foto_subida)
+    subida_camara.on_upload(foto_subida)
     boton.on_click(guardar)
 
 

@@ -126,10 +126,15 @@ def pedir_ya_no_esta(cliente, r, al_cambiar):
         ui.label("Si puede, suba una foto de cómo está el lugar ahora (se difuminan rostros y placas). "
                  "Con 3 vecinos que digan que ya no está, el reporte pasa a Solucionado.").classes("text-caption")
         vista = ui.row()
-        ui.upload(auto_upload=True, max_files=1, on_upload=foto_subida) \
-            .props('accept="image/*" capture="environment" max-file-size=10485760 '
-                   'label="Tomar o subir foto (opcional)" flat bordered') \
-            .classes("w-full")
+        with ui.column().classes("w-full gap-2"):
+            ui.upload(auto_upload=True, max_files=1, on_upload=foto_subida) \
+                .props('accept="image/*" max-file-size=10485760 '
+                       'label="Subir desde galería (opcional)" flat bordered') \
+                .classes("w-full")
+            ui.upload(auto_upload=True, max_files=1, on_upload=foto_subida) \
+                .props('accept="image/*" capture="environment" max-file-size=10485760 '
+                       'label="Tomar foto (opcional)" flat bordered color=primary') \
+                .classes("w-full")
         with ui.row().classes("w-full justify-end"):
             ui.button("Cancelar", on_click=dialogo.close).props("flat")
             boton_enviar = ui.button("Enviar", icon="close", color="negative", on_click=enviar)
