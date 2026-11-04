@@ -139,8 +139,9 @@ async def pagina_nuevo():
         ui.label("Antes de subirlas se difuminan rostros y placas.").classes("text-caption text-grey-7")
         with ui.row().classes("w-full items-start gap-2"):
             vista = ui.row().classes("gap-2")
-            subida = ui.upload(multiple=True, auto_upload=True, on_upload=lambda e: foto_subida(e)) \
-                    .props('accept="image/*" capture="environment" label="Tomar o subir foto" flat bordered color=grey-7') \
+            subida = ui.upload(multiple=True, auto_upload=True, on_upload=foto_subida) \
+                    .props('accept="image/*" capture="environment" max-file-size=10485760 '
+                           'label="Tomar o subir foto" flat bordered color=grey-7') \
                     .classes("w-56")
 
         boton = ui.button("Registrar reporte", icon="send").classes("w-full q-mt-md").props("size=lg")
@@ -171,7 +172,11 @@ async def pagina_nuevo():
     async def foto_subida(e):
         # Difuminamos la foto antes de subirla y mostramos cómo quedó.
         try:
-            contenido, cantidad = procesamiento.preparar_foto(e.content.read())
+            original = e.content.read()
+            if len(original) > 10 * 1024 * 1024:
+                ui.notify("La foto supera el límite de 10 MB.", type="warning")
+                return
+            contenido, cantidad = procesamiento.preparar_foto(original)
         except Exception:
             ui.notify("El archivo no es una imagen válida", type="negative")
             return

@@ -82,7 +82,11 @@ def pedir_ya_no_esta(cliente, r, al_cambiar):
 
     async def foto_subida(e):
         try:
-            foto["contenido"], cantidad = procesamiento.preparar_foto(e.content.read())
+            original = e.content.read()
+            if len(original) > 10 * 1024 * 1024:
+                ui.notify("La foto supera el límite de 10 MB.", type="warning")
+                return
+            foto["contenido"], cantidad = procesamiento.preparar_foto(original)
         except Exception:
             ui.notify("El archivo no es una imagen válida", type="negative")
             return
@@ -123,7 +127,8 @@ def pedir_ya_no_esta(cliente, r, al_cambiar):
                  "Con 3 vecinos que digan que ya no está, el reporte pasa a Solucionado.").classes("text-caption")
         vista = ui.row()
         ui.upload(auto_upload=True, max_files=1, on_upload=foto_subida) \
-            .props('accept="image/*" capture="environment" label="Tomar o subir foto (opcional)" flat bordered') \
+            .props('accept="image/*" capture="environment" max-file-size=10485760 '
+                   'label="Tomar o subir foto (opcional)" flat bordered') \
             .classes("w-full")
         with ui.row().classes("w-full justify-end"):
             ui.button("Cancelar", on_click=dialogo.close).props("flat")

@@ -16,6 +16,8 @@ def preparar_foto(contenido):
     """Devuelve (bytes del JPG listo para subir, cantidad de zonas difuminadas)."""
     # Abrimos la foto y la giramos según cómo se tomó con el celular.
     imagen = ImageOps.exif_transpose(Image.open(io.BytesIO(contenido))).convert("RGB")
+    # Reducimos antes de pasar a OpenCV para evitar consumir demasiada memoria.
+    imagen.thumbnail((1600, 1600))
     imagen_cv = cv2.cvtColor(np.array(imagen), cv2.COLOR_RGB2BGR)
 
     # Buscamos rostros y placas.
